@@ -2,3 +2,4 @@ Team Contributors
 
 Name | GitHub Username
 -----|----------------
+Michael Podolsky | MikePodo
