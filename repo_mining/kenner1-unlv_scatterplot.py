@@ -45,17 +45,27 @@ def parse_github_date(date_text):
 
 def shorten_file_path(file_path):
     """
-    Create readable labels while preserving each file's logical location.
+    Shorten long historical paths while preserving component and era.
 
-    Full Android source paths are too long for a one-page visualization.
-    Prefixes such as sample, library, test, and native retain the component
-    context needed to interpret ownership and maintenance activity.
+    Prefixes distinguish current library/sample code from legacy rootchecker,
+    JNI, native, and test paths without requiring unreadably long y-axis labels.
     """
     replacements = {
         "app/src/main/java/com/scottyab/rootbeer/sample/": "sample/",
+        "app/src/main/java/com/scottyab/rootchecker/": "legacy/rootchecker/",
+        "app/src/androidTest/java/com/scottyab/rootbeer/": "test/app/",
+        "app/src/androidTest/java/com/scottyab/rootchecker/": (
+            "test/legacy-app/"
+        ),
         "rootbeerlib/src/main/java/com/scottyab/rootbeer/": "library/",
-        "rootbeerlib/src/test/java/com/scottyab/rootbeer/": "test/",
-        "rootbeerlib/src/main/cpp/": "native/",
+        "rootbeerlib/src/test/java/com/scottyab/rootbeer/": "test/library/",
+        "rootbeerlib/src/androidTest/java/com/scottyab/rootbeer/": (
+            "test/library-android/"
+        ),
+        "rootbeerlib/src/main/cpp/": "native/current/",
+        "rootbeerlib/src/main/jni/": "native/main-jni/",
+        "rootbeerlib/jni/": "native/legacy-library/",
+        "app/jni/": "native/legacy-app/",
     }
 
     for prefix, replacement in replacements.items():
@@ -163,7 +173,7 @@ def create_scatter_plot(data, weekly_points):
     }
 
     figure, axis = plt.subplots(
-        figsize=(16, 9),
+        figsize=(18, 10.5),
         constrained_layout=True,
     )
 
@@ -201,7 +211,7 @@ def create_scatter_plot(data, weekly_points):
             f"({touch_counts[file_path]} touches)"
             for file_path in ordered_files
         ],
-        fontsize=8,
+        fontsize=6.8,
     )
 
     axis.set_xlabel(

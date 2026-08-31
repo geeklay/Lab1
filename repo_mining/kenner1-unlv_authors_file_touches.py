@@ -1,19 +1,16 @@
 """
-Collect author and file-touch history for selected Rootbeer source files.
+Collect author and file-touch history for Rootbeer source paths.
 
-Assignment scope
-----------------
-For every source file selected using the same criteria as Task 1, this script
-records:
+This script uses the same historical event definition as Task 1:
 
-- File path
-- Authors who changed the file
-- Dates of those changes
-- Total number of times the file was changed
-- Number of touches attributed to each author
+- Scan every commit on the dynamically discovered default branch.
+- Include changed paths ending in .java, .kt, .cpp, .c, or .h.
+- Count one touch when one commit changes one source path.
+- Preserve files later renamed, moved, or deleted.
+- Record the responsible author and change date for every touch.
 
-The resulting JSON provides the detailed event data needed by the scatter-plot
-script and executive summary.
+Using the same commit events for paths, totals, authors, and dates prevents the
+inconsistent counts that can occur when file histories are queried separately.
 """
 
 import json
@@ -36,12 +33,7 @@ API_BASE_URL = "https://api.github.com"
 
 
 def create_headers():
-    """
-    Create API headers using a token supplied at runtime.
-
-    Reading GITHUB_TOKEN from the environment prevents credentials from being
-    stored in source code or commit history.
-    """
+    """Build API headers using a credential supplied only at runtime."""
     github_token = os.getenv("GITHUB_TOKEN")
 
     if not github_token:
@@ -57,7 +49,7 @@ def create_headers():
 
 
 def github_get(url, params=None):
-    """Request JSON from GitHub and report HTTP failures clearly."""
+    """Request JSON from GitHub and stop clearly on API failures."""
     response = requests.get(
         url,
         headers=create_headers(),
@@ -69,7 +61,7 @@ def github_get(url, params=None):
 
 
 def get_default_branch(repository):
-    """Discover the default branch instead of assuming main or master."""
+    """Discover the repository default branch instead of assuming its name."""
     repository_data = github_get(
         f"{API_BASE_URL}/repos/{repository}"
     )
@@ -77,41 +69,16 @@ def get_default_branch(repository):
 
 
 def is_source_file(file_path):
-    """Apply the same documented source definition used in Task 1."""
+    """Apply the same source extension definition used by Task 1."""
     return Path(file_path).suffix.lower() in SOURCE_EXTENSIONS
-
-
-def collect_source_files(repository, branch):
-    """Return current source files from the repository's default branch."""
-    tree_data = github_get(
-        f"{API_BASE_URL}/repos/{repository}/git/trees/{branch}",
-        params={"recursive": "1"},
-    )
-
-    if tree_data.get("truncated"):
-        raise RuntimeError(
-            "GitHub returned a truncated repository tree."
-        )
-
-    source_files = sorted(
-        item["path"]
-        for item in tree_data["tree"]
-        if item["type"] == "blob" and is_source_file(item["path"])
-    )
-
-    if not source_files:
-        raise RuntimeError("No source files matched the selection criteria.")
-
-    return source_files
 
 
 def identify_author(commit_details):
     """
-    Select a stable author label for the visualization.
+    Prefer a linked GitHub username as the stable contributor identity.
 
-    A linked GitHub username is preferred because it distinguishes accounts
-    more reliably. If GitHub cannot associate the commit with an account, the
-    author name stored inside the Git commit is used as a fallback.
+    If GitHub cannot associate a commit with an account, fall back to the
+    author name stored in the Git commit.
     """
     github_author = commit_details.get("author")
 
@@ -122,15 +89,14 @@ def identify_author(commit_details):
     return commit_author.get("name") or "Unknown author"
 
 
-def collect_file_history(repository, branch, source_files):
+def collect_historical_file_history(repository, branch):
     """
-    Collect dated author events for every selected source file.
+    Collect every historical source-path touch from default-branch commits.
 
-    One touch represents one commit in which an author changed a selected file.
-    Commit pages are processed until GitHub returns an empty page.
+    The same event supplies the path, author, date, and touch count. This keeps
+    Task 2 totals directly reconcilable with Task 1.
     """
-    source_file_set = set(source_files)
-    file_changes = {file_path: [] for file_path in source_files}
+    file_changes = {}
     repository_commit_dates = []
     page = 1
 
@@ -162,8 +128,8 @@ def collect_file_history(repository, branch, source_files):
             for changed_file in commit_details.get("files", []):
                 file_path = changed_file["filename"]
 
-                if file_path in source_file_set:
-                    file_changes[file_path].append(
+                if is_source_file(file_path):
+                    file_changes.setdefault(file_path, []).append(
                         {
                             "sha": commit_summary["sha"],
                             "author": author,
@@ -173,31 +139,39 @@ def collect_file_history(repository, branch, source_files):
 
         page += 1
 
-    if not repository_commit_dates:
-        raise RuntimeError("No commits were returned for the repository.")
+    if not file_changes:
+        raise RuntimeError(
+            "No historical source-file changes were collected."
+        )
 
-    repository_start_date = min(repository_commit_dates)
-    return file_changes, repository_start_date
+    if not repository_commit_dates:
+        raise RuntimeError(
+            "No repository commits were returned."
+        )
+
+    return file_changes, min(repository_commit_dates)
 
 
 def build_output(
     repository,
     branch,
-    source_files,
     file_changes,
     repository_start_date,
 ):
     """
-    Convert raw change events into a documented JSON structure.
+    Build JSON containing detailed change events and author summaries.
 
-    Both detailed events and summarized author totals are retained. Detailed
-    events support plotting by week, while summaries support management-level
-    findings about ownership and concentration.
+    Detailed events support the weekly plot. Per-file and per-author totals
+    support management findings and reconciliation with the Task 1 CSV.
     """
     files = []
 
-    for file_path in source_files:
-        changes = file_changes[file_path]
+    for file_path in sorted(file_changes):
+        changes = sorted(
+            file_changes[file_path],
+            key=lambda change: change["date"],
+        )
+
         author_counts = Counter(
             change["author"] for change in changes
         )
@@ -218,10 +192,7 @@ def build_output(
                 "path": file_path,
                 "touches": len(changes),
                 "authors": authors,
-                "changes": sorted(
-                    changes,
-                    key=lambda change: change["date"],
-                ),
+                "changes": changes,
             }
         )
 
@@ -231,12 +202,16 @@ def build_output(
         "repository_start_date": repository_start_date,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "source_extensions": sorted(SOURCE_EXTENSIONS),
+        "file_scope": "historical default-branch source paths",
+        "touch_definition": (
+            "one commit changing one historical source path"
+        ),
         "files": files,
     }
 
 
 def write_json(output_data):
-    """Write readable, UTF-8 JSON for later analysis and visualization."""
+    """Write readable JSON for validation, plotting, and reporting."""
     DATA_DIRECTORY.mkdir(parents=True, exist_ok=True)
 
     with OUTPUT_FILE.open("w", encoding="utf-8") as json_file:
@@ -250,26 +225,20 @@ def write_json(output_data):
 
 
 def main():
-    """Run the complete author and file-touch collection process."""
+    """Run the complete historical author/file-touch collection."""
     default_branch = get_default_branch(REPOSITORY)
     print(f"Default branch: {default_branch}")
 
-    source_files = collect_source_files(
-        REPOSITORY,
-        default_branch,
-    )
-    print(f"Collecting history for {len(source_files)} source files.")
-
-    file_changes, repository_start_date = collect_file_history(
-        REPOSITORY,
-        default_branch,
-        source_files,
+    file_changes, repository_start_date = (
+        collect_historical_file_history(
+            REPOSITORY,
+            default_branch,
+        )
     )
 
     output_data = build_output(
         REPOSITORY,
         default_branch,
-        source_files,
         file_changes,
         repository_start_date,
     )
@@ -287,7 +256,8 @@ def main():
     }
 
     print(f"Output written to: {OUTPUT_FILE}")
-    print(f"Total selected-file touches: {total_touches}")
+    print(f"Historical source paths: {len(output_data['files'])}")
+    print(f"Total source-path touches: {total_touches}")
     print(f"Unique authors: {len(unique_authors)}")
 
 
