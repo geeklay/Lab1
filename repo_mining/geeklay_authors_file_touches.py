@@ -3,6 +3,7 @@ import csv
 import requests 
 import json
 from datetime import datetime
+from collections import Counter
 
 dotenvpath = os.getcwd() + "/.env"
 if os.path.exists(dotenvpath):
@@ -55,6 +56,24 @@ def get_paths(path):
                 paths.append(fn)
     return paths
 
+def print_info(data):
+    authors = Counter(i.get('author') for i in [p for q in data for p in q.get('commits')])
+    tcommits = sum(authors.values())
+    # Yes, this is horrendous.
+    pctcontri = {k: v for k,v in
+                       sorted({k: v/tcommits*100 for k,v in authors.items()}.items(),
+                       key=lambda v: v[1],
+                       reverse=True)}
+    print("Contributors + Commits:\n", authors)
+    print("Total Commits:\t", tcommits)
+    print("Percentage Contribution:\n", pctcontri)
+  # with open("usefuldata", "w") as file:
+  #     dt = {"Total Commits": tcommits,
+  #           "Authors/Contributors": authors,
+  #           "Percent Contribution": pctcontri
+  #           }
+  #     json.dump(dt, file, indent=4)
+
 res = list()
 
 for path in get_paths(paths[0]):
@@ -64,6 +83,8 @@ for path in get_paths(paths[0]):
                 "touches": len(commits),
                 "commits": commits,
                 })
+
+print_info(res)
 
 with open(paths[1], "w") as file:
     json.dump(res, file, indent=4)
