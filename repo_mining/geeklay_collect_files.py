@@ -7,9 +7,15 @@ from pathlib import Path
 if not os.path.exists("data"):
  os.makedirs("data")
 
-token = os.getenv("GIT_TOKEN")
+if 'GIT_TOKEN' in os.environ or 'GITHUB_TOKEN' in os.environ: 
+    token = os.getenv('GIT_TOKEN') if os.getenv('GIT_TOKEN') else os.getenv('GITHUB_TOKEN')
+else: 
+    print("Github token not supplied. Set GIT_TOKEN or GITHUB_TOKEN.\n" +
+          "export GIT_TOKEN=... or export GITHUB_TOKEN=...")
+    exit(1)
+
 if not token:
-    print("Github token not supplied. Set GIT_TOKEN envvar.\nexport GIT_TOKEN=...")
+    print("Error with token envvar.")
     exit(1)
 
 # GitHub Authentication function
