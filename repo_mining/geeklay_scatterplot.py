@@ -32,20 +32,27 @@ author_colors = {author: colormap(i % colormap.N) for i, author in enumerate(aut
 x = []
 y = []
 colors = []
+temp = set()
 
 figure, axis = plot.subplots(figsize=(15,10))
 
 for i, entry in enumerate(data):
     for commit in entry["commits"]:
-        x.append( (convert_date(commit["date"]) - first_commit).days //7)
         # could have this be the filenames themselves instead of indices
-        y.append(files.get(entry['path']))
+        x = ((convert_date(commit["date"]) - first_commit).days //7)
+        y = (files.get(entry['path']))
         colors.append(author_colors.get(commit['author']))
+        axis.scatter(x,y, c = author_colors.get(commit['author']), s=25,
+                      label = f"{commit['author']}" if commit['author'] not in temp else "")
+        temp.add(commit['author']) 
 
-axis.scatter(x,y,c=colors, s=25)
 axis.set_xlabel("weeks")
 axis.set_ylabel("files")
 axis.set_title("Rootbeer Files Touched by Contributors Over Time")
+figure.legend(title="authors",
+              loc="center right",
+              fontsize=8,
+              title_fontsize=10)
 figure.savefig(filepaths[1], dpi=96)
 plot.close(figure)
 print(f"Scatterplot saved to {filepaths[1]}")
