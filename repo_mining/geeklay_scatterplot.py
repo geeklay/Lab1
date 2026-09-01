@@ -18,22 +18,10 @@ with open(filepaths[0], "r") as file:
 
 first_commit = convert_date(min([j["date"] for e in data for j in e["commits"]]))
 
-def create_week_set(data):
-    r = set()
-    # s = dict()
-    for e in data:
-        for commit in e["commits"]:
-            # week, author, filepath
-           week = ((convert_date(commit["date"])) - first_commit).days // 7
-           test = (week, e["path"],  commit["author"])
-           r.add(test)
-    return r #, s
-
 colormap = plot.get_cmap("Paired")
 
-week_set = create_week_set(data)
 # authors: total commits
-authors = Counter(author for wk,fp,author in week_set)
+authors = Counter(i for i in [p.get('author') for q in data for p in q.get('commits')])
 # sort..
 authors = {k: v for k,v in (sorted(authors.items(), key=lambda item: item[1], reverse=True))}
 
