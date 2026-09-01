@@ -1,0 +1,70 @@
+import os 
+import csv
+import requests 
+import json
+from datetime import datetime
+
+dotenvpath = os.getcwd() + "/.env"
+if os.path.exists(dotenvpath):
+    from dotenv import load_dotenv
+    load_dotenv(dotenvpath)
+
+token = os.getenv("GIT_TOKEN")
+if not token:
+    print("Github token not supplied. Set GIT_TOKEN envvar:\texport GIT_TOKEN=...")
+    exit(1)
+
+# Github API request
+def github_auth(url, token, params=None):
+    headers = {"Authorization": f"Bearer {token}"}
+    request = requests.get(url, headers=headers, params=params, timeout=10)
+    request.raise_for_status();
+    return request.json()
+
+repo = "scottyab/rootbeer"
+branch = "master"
+
+# Paths array
+paths = ["data/geeklay_file_rootbeer.csv", 
+         "data/geeklay_authors_rootbeer.json"]
+
+def get_commits(path, token):
+    commits = list()
+    pageno = 1
+
+    while True:    
+        #commiturl = f"https://api.github.com/repos/{repo}/commits?page={pageno}&per_page=100&sha={branch}&path={path}"
+        commiturl = f"https://api.github.com/repos/{repo}/commits"
+        params = {"page": pageno, "per_page": 100, "sha": branch, "path": path}
+        commit = github_auth(commiturl, token, params)
+        if not commit:
+            break
+        for i in commit:
+            commitinfo = i.get("commit").get("author")
+            commits.append({"author": commitinfo.get("name"), "date": commitinfo.get("date")})
+        pageno += 1
+    return commits
+
+def get_paths(path):
+    paths = list()
+    with open(path) as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            fn = row.get("Filename")
+            if fn:
+                paths.append(fn)
+    return paths
+
+res = list()
+
+for path in get_paths(paths[0]):
+    print("fetching commits for {}".format(path))
+    commits = get_commits(path, token)
+    res.append({"path": path,
+                "touches": len(commits),
+                "commits": commits,
+                })
+
+with open(paths[1], "w") as file:
+    json.dump(res, file, indent=4)
+
