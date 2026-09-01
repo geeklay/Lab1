@@ -1,0 +1,64 @@
+import matplotlib.pyplot as plot
+import json
+from datetime import datetime
+from sys import version as sysv, version_info as sysvinfo
+from collections import Counter
+
+__mmpyversion = sysvinfo[:2]
+
+filepaths = ["data/geeklay_authors_rootbeer.json",
+         "geeklay_file_activity.png"
+         ]
+
+def convert_date(date):
+    return datetime.fromisoformat(date) if __mmpyversion >= (3,11) else datetime.fromisoformat(date.replace("Z", "+00:00"))
+
+with open(filepaths[0], "r") as file: 
+    data = json.load(file)
+
+first_commit = convert_date(min([j["date"] for e in data for j in e["commits"]]))
+
+def create_week_set(data):
+    r = set()
+    # s = dict()
+    for e in data:
+        for commit in e["commits"]:
+            # week, author, filepath
+           week = ((convert_date(commit["date"])) - first_commit).days // 7
+           test = (week, e["path"],  commit["author"])
+           r.add(test)
+    return r #, s
+
+colormap = plot.get_cmap("Paired")
+
+week_set = create_week_set(data)
+# authors: total commits
+authors = Counter(author for wk,fp,author in week_set)
+# sort..
+authors = {k: v for k,v in (sorted(authors.items(), key=lambda item: item[1], reverse=True))}
+
+paths = [i.get('path') for i in data]
+files = {name: ind for ind, name in enumerate(paths)}
+author_colors = {author: colormap(i % colormap.N) for i, author in enumerate(authors)}
+
+x = []
+y = []
+colors = []
+
+figure, axis = plot.subplots(figsize=(15,10))
+
+for i, entry in enumerate(data):
+    for commit in entry["commits"]:
+        x.append( (convert_date(commit["date"]) - first_commit).days //7)
+        # could have this be the filenames themselves instead of indices
+        y.append(files.get(entry['path']))
+        colors.append(author_colors.get(commit['author']))
+
+axis.scatter(x,y,c=colors, s=25)
+axis.set_xlabel("weeks")
+axis.set_ylabel("files")
+axis.set_title("Rootbeer Files Touched by Contributors Over Time")
+figure.savefig(filepaths[1], dpi=96)
+plot.close(figure)
+print(f"Scatterplot saved to {filepaths[1]}")
+
